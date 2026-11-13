@@ -24,6 +24,7 @@ import pandas as pd
 import allocator
 import config
 from bt import data, strategies
+from bt.timeframes import tf_to_minutes
 try:
     from bt import live
 except Exception:
@@ -242,7 +243,7 @@ def main():
         except Exception as e:
             print("paper skip", t["key"], str(e)[:80], flush=True)
             continue
-        tf_min = int(t["tf"][:-1])
+        tf_min = tf_to_minutes(t["tf"])
         fpb = None
         if "funding" in df.columns:
             fr = pd.to_numeric(df["funding"], errors="coerce").fillna(0.0).values

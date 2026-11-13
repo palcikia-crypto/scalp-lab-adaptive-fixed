@@ -2,6 +2,7 @@ import json
 
 import config
 from bt import data, engine, scan, strategies
+from bt.timeframes import tf_to_minutes
 
 
 def key_of(params):
@@ -10,7 +11,7 @@ def key_of(params):
 
 def run_task(t):
     tf = t["tf"]
-    tf_min = int(tf[:-1])
+    tf_min = tf_to_minutes(tf)
     df = data.klines(t["symbol"], tf, t["days"])
     if len(df) < 5000:
         raise RuntimeError("not enough data")

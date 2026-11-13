@@ -65,16 +65,16 @@ def walk_forward(df, sigs, train_bars, test_bars, fee, slip, tf_min,
         best_key, best_is = None, -1e9
         for k in keys:
             a, b = t0 - train_bars, t0
-            net, _ = position_returns(df.iloc[a:b], sigs[k].iloc[a:b], fee, slip, fpb=fpb)
+            net, _ = position_returns(df.iloc[a:b], sigs[k].iloc[a:b], fee, slip, fpb=(fpb[a:b] if fpb is not None else None))
             m = metrics(net, bars_per_year)
             if m["sharpe"] > best_is:
                 best_is, best_key = m["sharpe"], k
         a, b = t0, t0 + test_bars
-        net, trades = position_returns(df.iloc[a:b], sigs[best_key].iloc[a:b], fee, slip, fpb=fpb)
+        net, trades = position_returns(df.iloc[a:b], sigs[best_key].iloc[a:b], fee, slip, fpb=(fpb[a:b] if fpb is not None else None))
         oos_parts.append(net)
         if fee2 is not None:
             net2, _ = position_returns(df.iloc[a:b], sigs[best_key].iloc[a:b],
-                                       fee, slip, fpb=fpb, maker=(fee2, slip2))
+                                       fee, slip, fpb=(fpb[a:b] if fpb is not None else None), maker=(fee2, slip2))
             oos2_parts.append(net2)
         chosen.append(best_key)
         is_sharpes.append(best_is)
