@@ -1,0 +1,51 @@
+name: Safe AI Coder
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+jobs:
+  code:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install freellmpool aider-chat
+      - env:
+          POOL_ENV_B64: ${{ secrets.POOL_ENV_B64 }}
+        run: |
+          echo "$POOL_ENV_B64" | base64 -d > .pool.env
+          set -a && source .pool.env && set +a
+          rm -f .pool.env
+          nohup freellmpool > /tmp/pool.log 2>&1 &
+          sleep 4
+          cat /tmp/pool.log
+      - env:
+          OPENAI_API_KEY: anything
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          TASK_TITLE: ${{ github.event.issue.title }}
+          TASK_BODY: ${{ github.event.issue.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          export OPENAI_BASE_URL="http://127.0.0.1:$(echo 8080)/v1"
+          git config user.name "AI Coder"
+          git config user.email "bot@://github.com"
+          BR="ai-issue-${ISSUE_NUM}"
+          git fetch origin "$BR" 2>/dev/null && git checkout "$BR" || git checkout -b "$BR"
+          M=auto
+          P="${COMMENT_BODY:-$TASK_TITLE: $TASK_BODY}"
+          aider --model "openai/$M" --yes-always --auto-commits --no-pretty --message "Пиши на русском: сначала распиши план и мысли, потом сделай код. Задача: $P" 2>&1 | tee /tmp/out.txt
+          git push -u origin "$BR" || true
+          PR=$(gh pr create --fill --base main --head "$BR" 2>&1 || gh pr view "$BR" --json url -q .url 2>/dev/null || echo "")
+          printf "### Отчет кодера (модель: %s)\n%s\n\n\`\`\`text\n%s\n\`\`\`\n" "$M" "$PR" "$(tail -n 80 /tmp/out.txt)" > /tmp/rep.md
+          gh issue comment "$ISSUE_NUM" --body-file /tmp/rep.md
