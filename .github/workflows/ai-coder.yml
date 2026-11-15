@@ -42,7 +42,7 @@ jobs:
           git config user.email "bot@://github.com"
           BR="ai-issue-${ISSUE_NUM}"
           git fetch origin "$BR" 2>/dev/null && git checkout "$BR" || git checkout -b "$BR"
-          M=$(curl -s "$OPENAI_BASE_URL/models" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['id'] if d.get('data') else 'auto')")
+          M=$(curl -s "$OPENAI_BASE_URL/models" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(iter(d.get('data',[])),{}).get('id','auto') if d.get('data') )")
           P="${COMMENT_BODY:-$TASK_TITLE: $TASK_BODY}"
           aider --model "openai/$M" --yes-always --auto-commits --no-pretty --message "Пиши на русском: сначала распиши план и мысли, потом сделай код. Задача: $P" 2>&1 | tee /tmp/out.txt
           git push -u origin "$BR" || true
