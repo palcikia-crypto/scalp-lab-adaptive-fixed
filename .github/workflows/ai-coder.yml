@@ -1,84 +1,51 @@
-name: Safe AI Coder (freellmpool)
-
+name: Safe AI Coder
 on:
   issues:
     types: [opened]
   issue_comment:
     types: [created]
-
 permissions:
   contents: write
   issues: write
   pull-requests: write
-
 jobs:
   code:
     runs-on: ubuntu-latest
     if: github.actor != 'github-actions[bot]'
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install freellmpool and Aider
-        run: pip install freellmpool aider-chat
-
-      - name: Start freellmpool proxy
-        env:
-          POOL_ENV_B64: \${{ secrets.POOL_ENV_B64 }}
+      - run: pip install freellmpool aider-chat
+      - env:
+          POOL_ENV_B64: ${{ secrets.POOL_ENV_B64 }}
         run: |
-          echo "\$POOL_ENV_B64" | base64 -d > .pool.env
+          echo "$POOL_ENV_B64" | base64 -d > .pool.env
           set -a && source .pool.env && set +a
           rm -f .pool.env
           nohup freellmpool > /tmp/pool.log 2>&1 &
           sleep 4
           cat /tmp/pool.log
-
-      - name: Run AI Coder & Reply in Chat
-        env:
+      - env:
           OPENAI_API_KEY: anything
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUM: \${{ github.event.issue.number }}
-          TASK_TITLE: \${{ github.event.issue.title }}
-          TASK_BODY: \${{ github.event.issue.body }}
-          COMMENT_BODY: \${{ github.event.comment.body }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
+          TASK_TITLE: ${{ github.event.issue.title }}
+          TASK_BODY: ${{ github.event.issue.body }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          export OPENAI_BASE_URL="http://127.0.0.1:\$(echo 8080)/v1"
+          export OPENAI_BASE_URL="http://127.0.0.1:$(echo 8080)/v1"
           git config user.name "AI Coder"
-          git config user.email "bot@users.noreply.github.com"
-
-          BRANCH="ai-issue-\${ISSUE_NUM}"
-          git fetch origin "\$BRANCH" 2>/dev/null && git checkout "\$BRANCH" || git checkout -b "\$BRANCH"
-
-          MODEL=\$(curl -s http://127.0.0.1:\$(echo 8080)/v1/models | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data'][0]['id'] if d.get('data') else 'auto')")
-          echo "Using model: \$MODEL"
-
-          PROMPT="\${COMMENT_BODY:-\(TASK_TITLE:\)TASK_BODY}"
-          FULL_PROMPT="Отвечай подробно на русском языке. Сначала распиши свои мысли, план действий и что именно собираешься сделать или исправить, затем внеси нужные изменения в файлы (создавай новые файлы, если просят). Задача: \$PROMPT"
-
-          aider --model "openai/MODEL" --yes-always --auto-commits --no-pretty --message "FULL_PROMPT" 2>&1 | tee /tmp/aider_out.txt
-
-          git push -u origin "\$BRANCH" || true
-          PR_URL=\$(gh pr create --fill --base main --head "\$BRANCH" 2>&1 || gh pr view "\$BRANCH" --json url -q .url 2>/dev/null || echo "")
-
-          {
-            echo "### 🤖 Отчет и мысли ИИ-кодера (модель: \`\$MODEL\`)"
-            if [ -n "\$PR_URL" ]; then
-              echo "**Pull Request с кодом:** \$PR_URL"
-            fi
-            echo ""
-            echo "<details><summary>📜 Развернуть полные логи, мысли и список правок (нажми)</summary>"
-            echo ""
-            echo '```text'
-            tail -n 120 /tmp/aider_out.txt
-            echo '```'
-            echo "</details>"
-          } > /tmp/reply.md
-
-          gh issue comment "$ISSUE_NUM" --body-file /tmp/reply.md
+          git config user.email "bot@://github.com"
+          BR="ai-issue-${ISSUE_NUM}"
+          git fetch origin "$BR" 2>/dev/null && git checkout "$BR" || git checkout -b "$BR"
+          M=$(curl -s "$OPENAI_BASE_URL/models" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['data']['id'] if d.get('data') else 'auto')")
+          P="${COMMENT_BODY:-$TASK_TITLE: $TASK_BODY}"
+          aider --model "openai/$M" --yes-always --auto-commits --no-pretty --message "Пиши на русском: сначала распиши план и мысли, потом сделай код. Задача: $P" 2>&1 | tee /tmp/out.txt
+          git push -u origin "$BR" || true
+          PR=$(gh pr create --fill --base main --head "$BR" 2>&1 || gh pr view "$BR" --json url -q .url 2>/dev/null || echo "")
+          printf "### Отчет кодера (модель: %s)\n%s\n\n\`\`\`text\n%s\n\`\`\`\n" "$M" "$PR" "$(tail -n 80 /tmp/out.txt)" > /tmp/rep.md
+          gh issue comment "$ISSUE_NUM" --body-file /tmp/rep.md
